@@ -1,5 +1,12 @@
 module FirstOrderLogic
 
-greet() = print("Hello World!")
+include("types.jl")
+include("FOLParser.jl")
+using .FOLParser
 
-end # module
+include("transformations.jl")
+
+export parseTPTP, @fol_str, @tptp_str, simplify, negationNormalForm,
+  prenexNormalForm, skolemNormalForm
+
+end # module FirstOrderLogic
