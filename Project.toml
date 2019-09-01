@@ -3,6 +3,10 @@ uuid = "1710da80-0bc4-4782-bc8a-9051d75d3351"
 authors = ["William Macready <william.macready@gmail.com>"]
 version = "0.1.0"
 
+[deps]
+IterTools = "c8e1da08-722c-5040-9ed9-7db0dc04731e"
+ParserCombinator = "fae87a5f-d1ad-5cf0-8f61-c941e1580b46"
+
 [compat]
 julia = "1"
 

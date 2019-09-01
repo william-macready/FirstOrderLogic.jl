@@ -1,11 +1,6 @@
-module FOLParser
-
 using ParserCombinator
 
 export parseTPTP, @fol_str, @tptp_str
-
-include("types.jl")
-include("normalForms.jl")
 
 # subset of the grammar at http://www.tptp.org/Seminars/TPTPLanguage/SyntaxBNF.html
 
@@ -210,6 +205,3 @@ Build the data structure representing the TPTP directive(s) in the string s.
 macro tptp_str(s)
   simplify(parse_one(s, tptpFile+Eos())[1])
 end
-
-
-end # module FOLParser

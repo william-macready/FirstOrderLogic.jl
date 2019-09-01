@@ -1,12 +1,12 @@
 module FirstOrderLogic
 
-include("types.jl")
-include("FOLParser.jl")
-using .FOLParser
-
+include("types")
 include("transformations.jl")
+include("FOLParser.jl")
 
-export parseTPTP, @fol_str, @tptp_str, simplify, negationNormalForm,
-  prenexNormalForm, skolemNormalForm
+export Variable, FunctionTerm, PredicateTerm, NegationTerm, AndTerm, OrTerm,
+    AQuantifierTerm, EQuantifierTerm,
+    parseTPTP, @fol_str, @tptp_str, simplify, negationNormalForm,
+    prenexNormalForm, skolemNormalForm
 
 end # module FirstOrderLogic

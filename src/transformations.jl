@@ -1,16 +1,17 @@
-const global True = Functor("⊤")
-const global False = Functor("⊥")
-
 # mechanism to generate fresh free variable and functor names
 let
   varCount, funcCount = 0, 0
 
   global newVar(v::Variable) = Variable(v.name*"##"*string(varCount += 1))
+  global newVar(f::Functor) = Functor(f.name * "#sk" * string(funcCount += 1))
   global newFunc(v::Variable) = Functor(lowercase(v.name)*"#sk"*string(funcCount += 1))
   global newFunc() = Functor("#f#"*string(funcCount += 1))
   global resetNew() = varCount = funcCount = 0
 end
 
+
+const global True = Functor("⊤")
+const global False = Functor("⊥")
 
 """
    FOOL2FOL(a::AbstractLogicTerm)
