@@ -10,5 +10,3 @@ export Variable, FunctionTerm, PredicateTerm, NegationTerm, AndTerm, OrTerm,
     prenexNormalForm, skolemNormalForm
 
 end # module FirstOrderLogic
-
-#CODECOV_TOKEN="6737030d-0fee-4682-81d7-13552a275301"

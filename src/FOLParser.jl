@@ -1,8 +1,6 @@
 using ParserCombinator
 
-export parseTPTP, @fol_str, @tptp_str
-
-# subset of the grammar at http://www.tptp.org/Seminars/TPTPLanguage/SyntaxBNF.html
+# subset of the grammar at http://www.tptp.org/TPTP/SyntaxBNF.html
 
 spc = Drop(Star(Space()))
 @with_pre spc begin
@@ -49,12 +47,12 @@ spc = Drop(Star(Space()))
 
   # FOF formulae
   unaryConnective = E"~"
-  nonassocConnective = (spc + e"<=>") | (spc + e"=>") | (spc + e"<=") | (spc + e"<~>") | (spc + e"~\|") | (spc + e"~&")
-  fofQuantifier = (spc + e"!") | (spc + e"?")
+  nonassocConnective = p"\s*<=>" | p"\s*=>" | p"\s*<=" | p"\s*<~>" | p"\s*~\|" | p"\s*~&"
+  fofQuantifier = p"\s*!" | p"\s*\?"
   fofVariableList = PlusList(variable, E",")
 
   fofUnitaryFormula = Delayed()
-  fofUnaryFormula = unaryConnective + fofUnitaryFormula > x-> NegationTerm(x)
+  fofUnaryFormula = (unaryConnective + fofUnitaryFormula > x-> NegationTerm(x)) | fofInfixUnary
   fofUnitFormula = fofUnitaryFormula | fofUnaryFormula
   fofQuantifiedFormula = fofQuantifier + P"\s*\[" + fofVariableList + P"\s*\]\s*:" + fofUnitFormula |>
     x -> (x[1]=="!" ? AQuantifierTerm : EQuantifierTerm)(x[2:end]...)
@@ -82,24 +80,24 @@ spc = Drop(Star(Space()))
   # TFF: typed formula with FOOL extensions
   infixInequality = P"\s*!="
   definedInfixPred = P"\s*="
-  nonassocConnective = p"\s*<=>" | p"\s*=>" | p"\s*<=" | p"\s*<~>" | p"\s*~|" | p"\s*~&"
   untypedAtom = constant
   typeFunctor = atomicWord
   typeConstant = typeFunctor
   definedType = atomicDefinedWord
   tfxUnitaryFormula = variable
   tffAtomicType = typeConstant | definedType
-  tffTypedVariable = variable + P"\s*:" + tffAtomicType |> x -> (v = Variable(x[1]); assignType(v, x[2]); v)
+  tffTypedVariable = variable + P"\s*:" + tffAtomicType |> x -> (assignType(x[1], x[2]); x[1])
   tffVariable = tffTypedVariable | variable
   tffVariableList = PlusList(tffVariable, E",") |> x -> convert(Vector{Variable}, x)
   tffTerm = Delayed()
   tffArguments = PlusList(tffTerm, P"\s*,") |> x -> convert(Vector{typejoin(typeof.(x)...)}, x)
-  tffPlainAtomic = (functor + P"\s*\(" + tffArguments + P"\s*\)" |> x -> PredicateTerm(x[1], x[2])) | constant
+  tffPlainAtomic = (functor + P"\s*\(" + tffArguments + P"\s*\)\s*" |> x -> PredicateTerm(x[1], x[2])) |
+      (constant > ConstantTerm)
   tffAtomicFormula = tffPlainAtomic
   tfxUnitaryFormula  = variable
   tffUnitaryFormula = Delayed()
   tffLogicFormula = Delayed()
-  tffUnitaryTerm = tffAtomicFormula | variable | (P"\s*\(" + tffLogicFormula + P"\s*\)")
+  tffUnitaryTerm = tffAtomicFormula | variable | (P"\s*\(" + tffLogicFormula + P"\s*\)\s*")
   tffPreunitFormula = Delayed()
   tffPrefixUnary = unaryConnective + tffPreunitFormula > x -> NegationTerm(x)
   tffInfixUnary = tffUnitaryTerm  + infixInequality + tffUnitaryTerm |> x -> NegationTerm(equalTerm(x[1],x[2]))
@@ -108,8 +106,8 @@ spc = Drop(Star(Space()))
   tffDefinedInfix = tffUnitaryTerm + definedInfixPred + tffUnitaryTerm |> x -> equalTerm(x[1],x[2])
   tffUnitFormula = tffUnitaryFormula | tffUnaryFormula | tffDefinedInfix
   tffQuantifiedFormula = fofQuantifier + P"\s*\[" + tffVariableList + P"\s*\]\s*:" + tffUnitFormula |>
-    x -> (x[1]=="!" ? AQuantifierTerm : EQuantifierTerm)(x[2:end]...)
-  tffUnitaryFormula.matcher = tffQuantifiedFormula | tffAtomicFormula | (P"\s*\(" + tffLogicFormula + P"\s*\)") | tfxUnitaryFormula
+     x -> (x[1]=="!" ? AQuantifierTerm : EQuantifierTerm)(x[2:end]...)
+  tffUnitaryFormula.matcher = tffQuantifiedFormula | tffAtomicFormula | (P"\s*\(" + tffLogicFormula + P"\s*\)\s*") | tfxUnitaryFormula
   tffBinaryNonassoc = tffUnitFormula  + nonassocConnective + tffUnitFormula |> x -> begin
     if x[2] == "=>"
       OrTerm([NegationTerm(x[1]), x[3]])
@@ -159,9 +157,9 @@ tffAtomTyping.matcher = (untypedAtom + P"\s*:" + tffTopLevelType |>
   cnfAnnotated = (P"\s*cnf\(" + name + P"\s*," + formulaRole + P"\s*," + cnfFormula + P"\s*\)\.\s*") |>
     x -> (Symbol(x[1]), x[3])
   fofAnnotated = (P"\s*fof\(" + name + P"\s*," + formulaRole + P"\s*," + fofFormula + P"\s*\)\.\s*") |>
-    x -> (Symbol(x[1]), x[2] == "negated_conjecture" ? NegationTerm(x[3]) : x[3])
+    x -> (Symbol(x[1]), x[2] == "conjecture" ? NegationTerm(x[3]) : x[3])
   tffAnnotated = (P"\s*tff\(" + name + P"\s*," + formulaRole + P"\s*," + tffFormula + P"\s*\)\.\s*") |>
-    x -> (Symbol(x[1]), x[3])
+    x -> (Symbol(x[1]),  x[2] == "conjecture" ? NegationTerm(x[3]) : x[3])
   annotatedFormula = cnfAnnotated | fofAnnotated | tffAnnotated
 
   sqChar = p"([\40-\46\50-\133\135-\176]|[\\]['\\])"
@@ -185,23 +183,26 @@ function parseTPTP(io::IO)
   close(io)
   ret
 end
-
+parseTPTP(fileName::AbstractString) = parseTPTP(open(fileName,"r"))
 
 """
     @fol_str(s)
 
-Build the data structure representing the formula stored in TPTP format in the
-string s.
+Build the data structure representing the first order formula stored in TPTP
+format in the string s. Note that \$ should not be escaped inside the fol_str
+macro.
 """
 macro fol_str(s)
-  simplify(parse_one(s, fofFormula+Eos())[1])
+  simplify(parse_one(s, tffFormula+Eos())[1])
 end
+
 
 """
     @tptp_str(s)
 
 Build the data structure representing the TPTP directive(s) in the string s.
+Note that \$ should not be escaped inside the fol_str macro
 """
 macro tptp_str(s)
-  simplify(parse_one(s, tptpFile+Eos())[1])
+  parse_one(s, tptpFile+Eos())
 end
