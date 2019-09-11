@@ -5,13 +5,14 @@ abstract type SententialTerm{T<:AbstractLogicTerm} <: AbstractLogicTerm end
 abstract type JunctionTerm{T<:AbstractLogicTerm} <: SententialTerm{T} end
 abstract type QuantifierTerm{T<:AbstractLogicTerm} <: SententialTerm{T} end
 
-struct Variable <: AbstractLogicTerm
+# we make Variable <: SententialTerm to enable FOOL extensions
+struct Variable <: SententialTerm{AbstractLogicTerm}
   name::String
 end
-Variable(name::AbstractString) = Variable(name, (:Any,))
-Variable(v::Variable) = Variable(v.name, (:Any,))
-Variable(name::AbstractString, t::Symbol) = Variable(name, (t,))
-Variable(v::Variable, t::Symbol) = Variable(v.name, (t,))
+Variable(name::AbstractString) = Variable(name)
+Variable(v::Variable) = Variable(v.name)
+Variable(name::AbstractString, t::Symbol) = Variable(name)
+Variable(v::Variable, t::Symbol) = Variable(v.name)
 string(v::Variable) = v.name
 
 struct Functor <: AbstractLogicTerm
@@ -130,4 +131,5 @@ let
       println("$k: $typeString")
     end
   end
+  global typeOf(k) = assignments[k]
 end

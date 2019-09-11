@@ -2,7 +2,7 @@ module FirstOrderLogic
 
 include("types.jl")
 include("transformations.jl")
-include("FOLParser.jl")
+include("parser.jl")
 
 export Variable, FunctionTerm, PredicateTerm, NegationTerm, AndTerm, OrTerm,
     AQuantifierTerm, EQuantifierTerm,
