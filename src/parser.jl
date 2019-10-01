@@ -2,6 +2,8 @@ using ParserCombinator
 
 # subset of the grammar at http://www.tptp.org/TPTP/SyntaxBNF.html
 
+global e = Env()
+
 spc = Drop(Star(Space()))
 @with_pre spc begin
   # useful sundry things
@@ -21,15 +23,17 @@ spc = Drop(Star(Space()))
   fofFunctionTerm = Delayed()
   fofTerm = fofFunctionTerm | variable
   fofArguments = PlusList(fofTerm, E",")
-  fofPlainTerm = (functor + P"\s*\(" + fofArguments + P"\s*\)" |> x -> FunctionTerm(x[1],x[2:end])) | proposition
+  fofPlainTerm = (functor + P"\s*\(" + fofArguments + P"\s*\)" |>
+                  x -> FunctionTerm(x[1],x[2:end])) | proposition
   fofFunctionTerm.matcher = fofPlainTerm
   fofPlainAtomicFormula = fofPlainTerm
   fofAtomicFormula = fofPlainAtomicFormula > x-> PredicateTerm(x.name,x.args)
   vLine = E"|"
-  negatedAtomicFormula = E"~" + fofAtomicFormula |> x-> NegationTerm(PredicateTerm(x[1].name, x[1].args))
-  dollarWord = P"\s*\$" + lowerWord
+  negatedAtomicFormula = E"~" + fofAtomicFormula |>
+    x-> NegationTerm(PredicateTerm(x[1].name, x[1].args))
+  dollarWord = p"\s*\$" + lowerWord |> x -> "\$" * x[2]
   atomicDefinedWord = dollarWord
-  atomicSystemWord = P"\s*\$\$" + lowerWord
+  atomicSystemWord = p"\s*\$\$" + lowerWord
   definedFunctor = atomicDefinedWord
   definedConstant = definedFunctor
   systemFunctor = atomicSystemWord
@@ -37,7 +41,8 @@ spc = Drop(Star(Space()))
   untypedAtom = constant | systemConstant
   atom = untypedAtom | definedConstant
   fofTerm = fofFunctionTerm | variable
-  fofInfixUnary = (fofTerm + P"\s*!=" + fofTerm |> x -> NegationTerm(equalTerm(x[1],x[2])))
+  fofInfixUnary = fofTerm + P"\s*!=" + fofTerm |>
+    x -> NegationTerm(equalTerm(x[1],x[2]))
 
   # CNF formulae
   literal = fofAtomicFormula | negatedAtomicFormula | fofInfixUnary
@@ -47,32 +52,37 @@ spc = Drop(Star(Space()))
 
   # FOF formulae
   unaryConnective = E"~"
-  nonassocConnective = p"\s*<=>" | p"\s*=>" | p"\s*<=" | p"\s*<~>" | p"\s*~\|" | p"\s*~&"
+  nonassocConnective = p"\s*<=>" | p"\s*=>" | p"\s*<=" | p"\s*<~>" | p"\s*~\|" |
+    p"\s*~&"
   fofQuantifier = p"\s*!" | p"\s*\?"
   fofVariableList = PlusList(variable, E",")
 
   fofUnitaryFormula = Delayed()
-  fofUnaryFormula = (unaryConnective + fofUnitaryFormula > x-> NegationTerm(x)) | fofInfixUnary
+  fofUnaryFormula = (unaryConnective + fofUnitaryFormula > x-> NegationTerm(x)) |
+    fofInfixUnary
   fofUnitFormula = fofUnitaryFormula | fofUnaryFormula
-  fofQuantifiedFormula = fofQuantifier + P"\s*\[" + fofVariableList + P"\s*\]\s*:" + fofUnitFormula |>
-    x -> (x[1]=="!" ? AQuantifierTerm : EQuantifierTerm)(x[2:end]...)
+  fofQuantifiedFormula = fofQuantifier + P"\s*\[" + fofVariableList + P"\s*\]\s*:" +
+    fofUnitFormula |> x -> (x[1]=="!" ? AQuantifierTerm : EQuantifierTerm)(x[2:end]...)
   fofLogicFormula = Delayed()
   fofUnitaryFormula.matcher =  (P"\s*\(" + fofLogicFormula + P"\s*\)\s*") |
     (fofAtomicFormula + spc) | (fofQuantifiedFormula + spc)
-  fofOrFormula = fofUnitFormula + vLine + PlusList(fofUnitFormula, vLine) |> x-> OrTerm(x...)
-  fofAndFormula = fofUnitFormula + P"\s*&\s*" + PlusList(fofUnitFormula, P"\s*&\s*") |> x-> AndTerm(x...)
+  fofOrFormula = fofUnitFormula + vLine + PlusList(fofUnitFormula, vLine) |>
+    x-> OrTerm(x...)
+  fofAndFormula = fofUnitFormula + P"\s*&\s*" + PlusList(fofUnitFormula, P"\s*&\s*") |>
+    x-> AndTerm(x...)
   fofBinaryAssoc = fofOrFormula | fofAndFormula
-  fofBinaryNonassoc = fofUnitFormula + nonassocConnective + fofUnitFormula |> x-> begin
-    if x[2] == "=>"
-      OrTerm([NegationTerm(x[1]), x[3]])
-    elseif x[2] == "<=>"
-      AndTerm([OrTerm([NegationTerm(x[1]), x[3]]), OrTerm([NegationTerm(x[3]), x[1]])])
-    elseif x[2] == "<="
-      OrTerm([NegationTerm(x[3]), x[1]])
-    else
-      error("$(x[2]) not implemented")
+  fofBinaryNonassoc = fofUnitFormula + nonassocConnective + fofUnitFormula |>
+    x-> begin
+      if x[2] == "=>"
+        OrTerm([NegationTerm(x[1]), x[3]])
+      elseif x[2] == "<=>"
+        AndTerm([OrTerm([NegationTerm(x[1]), x[3]]), OrTerm([NegationTerm(x[3]), x[1]])])
+      elseif x[2] == "<="
+        OrTerm([NegationTerm(x[3]), x[1]])
+      else
+        error("$(x[2]) not implemented")
+      end
     end
-  end
   fofBinaryFormula = fofBinaryAssoc | fofBinaryNonassoc
   fofLogicFormula.matcher = fofUnitaryFormula | fofBinaryFormula | fofUnaryFormula
   fofFormula = fofLogicFormula
@@ -86,41 +96,50 @@ spc = Drop(Star(Space()))
   definedType = atomicDefinedWord
   tfxUnitaryFormula = variable
   tffAtomicType = typeConstant | definedType
-  tffTypedVariable = variable + P"\s*:" + tffAtomicType |> x -> (assignType(x[1], x[2]); x[1])
+  tffTypedVariable = variable + P"\s*:" + tffAtomicType |>
+    x -> (e[x[1].name] = x[2]; x[1])
   tffVariable = tffTypedVariable | variable
   tffVariableList = PlusList(tffVariable, E",") |> x -> convert(Vector{Variable}, x)
   tffTerm = Delayed()
-  tffArguments = PlusList(tffTerm, P"\s*,") |> x -> convert(Vector{typejoin(typeof.(x)...)}, x)
+  tffArguments = PlusList(tffTerm, P"\s*,") |>
+    x -> convert(Vector{typejoin(typeof.(x)...)}, x)
   tffPlainAtomic = (functor + P"\s*\(" + tffArguments + P"\s*\)\s*" |> x -> PredicateTerm(x[1], x[2])) |
       (constant > ConstantTerm)
   tffAtomicFormula = tffPlainAtomic
   tfxUnitaryFormula  = variable
   tffUnitaryFormula = Delayed()
   tffLogicFormula = Delayed()
-  tffUnitaryTerm = tffAtomicFormula | variable | (P"\s*\(" + tffLogicFormula + P"\s*\)\s*")
+  tffUnitaryTerm = tffAtomicFormula | variable |
+    (P"\s*\(" + tffLogicFormula + P"\s*\)\s*")
   tffPreunitFormula = Delayed()
   tffPrefixUnary = unaryConnective + tffPreunitFormula > x -> NegationTerm(x)
-  tffInfixUnary = tffUnitaryTerm  + infixInequality + tffUnitaryTerm |> x -> NegationTerm(equalTerm(x[1],x[2]))
+  tffInfixUnary = tffUnitaryTerm  + infixInequality + tffUnitaryTerm |>
+    x -> NegationTerm(equalTerm(x[1],x[2]))
   tffPreunitFormula.matcher = tffPrefixUnary | tffUnitaryFormula
   tffUnaryFormula = tffPrefixUnary | tffInfixUnary
-  tffDefinedInfix = tffUnitaryTerm + definedInfixPred + tffUnitaryTerm |> x -> equalTerm(x[1],x[2])
+  tffDefinedInfix = tffUnitaryTerm + definedInfixPred + tffUnitaryTerm |>
+    x -> equalTerm(x[1],x[2])
   tffUnitFormula = tffUnitaryFormula | tffUnaryFormula | tffDefinedInfix
   tffQuantifiedFormula = fofQuantifier + P"\s*\[" + tffVariableList + P"\s*\]\s*:" + tffUnitFormula |>
-     x -> (x[1]=="!" ? AQuantifierTerm : EQuantifierTerm)(x[2:end]...)
-  tffUnitaryFormula.matcher = tffQuantifiedFormula | tffAtomicFormula | (P"\s*\(" + tffLogicFormula + P"\s*\)\s*") | tfxUnitaryFormula
-  tffBinaryNonassoc = tffUnitFormula  + nonassocConnective + tffUnitFormula |> x -> begin
-    if x[2] == "=>"
-      OrTerm([NegationTerm(x[1]), x[3]])
-    elseif x[2] == "<=>"
-      AndTerm([OrTerm([NegationTerm(x[1]), x[3]]), OrTerm([NegationTerm(x[3]), x[1]])])
-    elseif x[2] == "<="
-      OrTerm([NegationTerm(x[3]), x[1]])
-    else
-      error("$(x[2]) not implemented")
+    x -> (x[1]=="!" ? AQuantifierTerm : EQuantifierTerm)(x[2:end]...)
+  tffUnitaryFormula.matcher = tffQuantifiedFormula | tffAtomicFormula |
+    (P"\s*\(" + tffLogicFormula + P"\s*\)\s*") | tfxUnitaryFormula
+  tffBinaryNonassoc = tffUnitFormula  + nonassocConnective + tffUnitFormula |>
+    x -> begin
+      if x[2] == "=>"
+        OrTerm([NegationTerm(x[1]), x[3]])
+      elseif x[2] == "<=>"
+        AndTerm([OrTerm([NegationTerm(x[1]), x[3]]), OrTerm([NegationTerm(x[3]), x[1]])])
+      elseif x[2] == "<="
+        OrTerm([NegationTerm(x[3]), x[1]])
+      else
+        error("$(x[2]) not implemented")
+      end
     end
-  end
-  tffOrFormula = tffUnitFormula + vLine  + PlusList(tffUnitFormula, vLine) |> x -> OrTerm(x...)
-  tffAndFormula = tffUnitFormula + P"\s*&"  + PlusList(tffUnitFormula, P"\s*&") |> x -> AndTerm(x...)
+  tffOrFormula = tffUnitFormula + vLine  + PlusList(tffUnitFormula, vLine) |>
+    x -> OrTerm(x...)
+  tffAndFormula = tffUnitFormula + P"\s*&"  + PlusList(tffUnitFormula, P"\s*&") |>
+    x -> AndTerm(x...)
   tffBinaryAssoc = tffOrFormula | tffAndFormula
 
   tffUnitaryType = Delayed()
@@ -128,23 +147,20 @@ spc = Drop(Star(Space()))
   tffXprodType.matcher = (tffUnitaryType + P"\s*\*" + tffAtomicType |> x -> x) |
     (tffXprodType + P"\s*\*" + tffAtomicType |> x -> [x[1]...,x[2]])
   tffUnitaryType.matcher = tffAtomicType | (P"\s*\(" + tffXprodType + P"\s*\)")
-  tffMappingType = tffUnitaryType + P"\s*>" + tffAtomicType |> x -> isa(x[1], AbstractArray) ? [x[1]..., x[2]] : [x[1], x[2]]
+  tffMappingType = tffUnitaryType + P"\s*>" + tffAtomicType |>
+    x -> isa(x[1], AbstractArray) ? [x[1]..., x[2]] : [x[1], x[2]]
 
   tffTopLevelType = Delayed()
-  tffTopLevelType.matcher = tffMappingType | (P"\s*\(" + tffTopLevelType + P"\s*\)") | tffAtomicType
+  tffTopLevelType.matcher = tffMappingType | (P"\s*\(" + tffTopLevelType + P"\s*\)") |
+    tffAtomicType
 
   tffAtomTyping = Delayed()
-tffAtomTyping.matcher = (untypedAtom + P"\s*:" + tffTopLevelType |>
-                         x -> begin
-                         if isa(x[2], AbstractArray)
-                         assignType(x[1], x[2]...)
-                         else
-                         assignType(x[1], x[2])
-                         end
-                         end) | (P"\s*\(" + tffAtomTyping + P"\s*\)")
+  tffAtomTyping.matcher = (untypedAtom + P"\s*:" + tffTopLevelType |> x -> e[x[1].name] = x[2]) |
+                           (P"\s*\(" + tffAtomTyping + P"\s*\)")
 
   tffBinaryFormula = tffBinaryNonassoc | tffBinaryAssoc
-  tffLogicFormula.matcher = tffUnitaryFormula | tffUnaryFormula | tffBinaryFormula | tffDefinedInfix
+  tffLogicFormula.matcher = tffUnitaryFormula | tffUnaryFormula | tffBinaryFormula |
+    tffDefinedInfix
   tffTerm.matcher = tffLogicFormula
   tffSubtype = untypedAtom + P"\s*<<" + atom
   tffFormula = tffLogicFormula | tffAtomTyping | tffSubtype
@@ -179,11 +195,14 @@ end
 Read in the TPTP description at the given IO stream
 """
 function parseTPTP(io::IO)
+  global e
+  resetEnv!(e)  # create a fresh environment
   ret = parse_one(read(io, String), tptpFile + Eos())
   close(io)
   ret
 end
 parseTPTP(fileName::AbstractString) = parseTPTP(open(fileName,"r"))
+
 
 """
     @fol_str(s)
@@ -197,6 +216,13 @@ macro fol_str(s)
 end
 
 
+function tptpHelper(s)
+  global e
+  resetEnv!(e)  # create a fresh environment
+  parse_one(s, tptpFile+Eos())[1]
+end
+
+
 """
     @tptp_str(s)
 
@@ -204,5 +230,5 @@ Build the data structure representing the TPTP directive(s) in the string s.
 Note that \$ should not be escaped inside the fol_str macro
 """
 macro tptp_str(s)
-  parse_one(s, tptpFile+Eos())
+  tptpHelper(s)
 end

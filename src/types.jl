@@ -30,7 +30,8 @@ FunctionTerm(n::AbstractString, args) = FunctionTerm(Functor(string(n)), args)
 ConstantTerm(n::Functor) = FunctionTerm(n, Variable[])
 ConstantTerm(n) = FunctionTerm(Functor(string(n)), Variable[])
 
-function listString(xs::AbstractVector, head::AbstractString, sep::AbstractString, tail::AbstractString)
+function listString(xs::AbstractVector, head::AbstractString,
+                    sep::AbstractString, tail::AbstractString)
   foldl((x,y) -> x*sep*string(y), xs[2:end]; init=head*string(xs[1]))*tail
 end
 
@@ -38,12 +39,11 @@ struct PredicateTerm{T<:AbstractLogicTerm} <: SententialTerm{T}
   name::Functor
   args::Vector{T}
 end
-PredicateTerm(n::String, args) = (println("im here $n $(typeof(args))"); r = PredicateTerm(Functor(n), args); @show r; r)
+PredicateTerm(n::String, args) = PredicateTerm(Functor(n), args)
 
-function equalTerm(t1::Union{PredicateTerm,FunctionTerm,Variable},
-                   t2::Union{PredicateTerm,FunctionTerm,Variable})
-  PredicateTerm(Functor("="), [t1,t2])
-end
+equalTerm(t1::Union{PredicateTerm,FunctionTerm,Variable},
+          t2::Union{PredicateTerm,FunctionTerm,Variable}) =
+            PredicateTerm(Functor("="), [t1,t2])
 
 string(f::Union{FunctionTerm,PredicateTerm}) =
   isempty(f.args) ? string(f.name) : listString(f.args, string(f.name)*"(", ",", ")")
@@ -90,7 +90,8 @@ end
 string(q::AQuantifierTerm) = "∀" * listString(q.variables, "", ",", "") * " " * string(q.scope)
 
 
-for T in (Variable,FunctionTerm,PredicateTerm,NegationTerm,AndTerm,OrTerm,AQuantifierTerm,EQuantifierTerm)
+for T in (Variable, FunctionTerm, PredicateTerm, NegationTerm, AndTerm, OrTerm,
+          AQuantifierTerm,EQuantifierTerm)
   @eval rootType(_::$T) = $T
 end
 
@@ -104,32 +105,8 @@ pairedQuantifierType(_::OrTerm) = EQuantifierTerm
 Return a Vector{Variable} of the free variables in a.
 """
 freeVar(v::Variable) = [v]
-freeVar(fp::Union{FunctionTerm,PredicateTerm}) = foldl((u,x) -> union!(u, freeVar(x)), fp.args; init=Variable[])
+freeVar(fp::Union{FunctionTerm,PredicateTerm}) =
+  foldl((u,x) -> union!(u, freeVar(x)), fp.args; init=Variable[])
 freeVar(n::NegationTerm) = freeVar(n.scope)
 freeVar(j::JunctionTerm) = foldl((u,x) -> union!(u, freeVar(x)), j.juncts; init=Variable[])
-freeVar(q::QuantifierTerm) = (vs =freeVar(q.scope); vq = q.variables; @show vs[1].type, vq[1].type, setdiff(vs,vq); setdiff(freeVar(q.scope), q.variables))
-
-let
-  # an assignment is a mapping from Variables and Functors to types
-  # we also allow mapping from String to types to define type synonyms
-  assignments = Dict{Union{Variable,Functor,String},Tuple{Vararg{String}}}()
-  global assignType(k, vs::String...) = assignments[k] = vs
-  global assignType(k, vs::Tuple{Vararg{String}}) = assignments[k] = vs
-  global function showAssignment()
-    for (k,v) in assignments
-      typeString = if length(v) == 1
-        v[1]
-      elseif length(v) == 2
-        v[1] * " -> " * v[end]
-      else
-        str = "("
-        for t in v[1:end-2]
-          str *= t * ", "
-        end
-        str * v[end-1] * ") -> " * v[end]
-      end
-      println("$k: $typeString")
-    end
-  end
-  global typeOf(k) = assignments[k]
-end
+freeVar(q::QuantifierTerm) = setdiff(freeVar(q.scope), q.variables)
