@@ -27,5 +27,10 @@ using Test
   tmp = parseTPTP("tffTypeTest.p")
   # validate the environment created by tffTypeTest.p
   @test length(FirstOrderLogic.e) == 16
-
+  # test the ingested SententialTerms for their type
+  typed = Vector{Bool}(undef, 0)
+  for s in filter(x->isa(x[2],FirstOrderLogic.SententialTerm), tmp)
+    push!(typed, isWellTyped(s[2],FirstOrderLogic.e))
+  end
+  @show typed
 end # testset

@@ -10,7 +10,7 @@ include("parser.jl")
 include("typeCheck.jl")
 
 export Variable, FunctionTerm, PredicateTerm, NegationTerm, AndTerm, OrTerm,
-  AQuantifierTerm, EQuantifierTerm,
+  AQuantifierTerm, EQuantifierTerm, SententialTerm,
   resetEnv!, isWellTyped,
   parseTPTP, @fol_str, @tptp_str, simplify, negationNormalForm,
   prenexNormalForm, skolemNormalForm
