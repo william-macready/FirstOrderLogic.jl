@@ -1,40 +1,48 @@
-const global True = Functor("⊤")
-const global False = Functor("⊥")
+const global True  = ConstantTerm("⊤")
+const global False = ConstantTerm("⊥")
+
 
 """
-   FOOL2FOL(a::AbstractLogicTerm)
+   FOOL2FOL!(a::AbstractLogicTerm, e::Env)
 
-Convert a FOOL logic expression to first order form. See [``` `A First Class Boolean Sort in First-Order
-Theorem Proving and TPTP` ```](https://arxiv.org/pdf/1505.01682.pdf).
+Convert a FOOL logic expression with associated Environment `e` to first order form. This
+may modify the environment by introducing new typed `FunctionTerm`s. See [A First Class
+Boolean Sort in First-Order Theorem Proving and TPTP](https://arxiv.org/pdf/1505.01682.pdf)
+for details.
 """
-function FOOL2FOL(a)
-  defs = Vector{PredicateTerm}[]
-  ret = f2f!(a, defs)
+function FOOL2FOL!(a, e=Env())
+  # f2f! replaces all FOOL formula with FOL formula and adds new terms
+  function f2f!(fp::Union{FunctionTerm,PredicateTerm}, defs, e::Env)
+    newArgs = similar(fp.args, Union{Variable,FunctionTerm})
+    for (i,a) in enumerate(fp.args)
+      a = f2f!(a, defs, e)  # recursively apply f2f!
+      if typeof(a) <: Union{PredicateTerm,JunctionTerm,QuantifierTerm,NegationTerm}
+        fv = freeVar(a)
+        F = FunctionTerm(newFunctor(e), fv);  newArgs[i] = F
+        eq = equalTerm(F,True)
+        ts = getindex.(Ref(e), getproperty.(fv, :name))  # get argument types
+        e[F.name.name] = tuple(getindex.(ts,1)..., BoolType())
+        newFormula = AndTerm(OrTerm(NegationTerm(a), eq), OrTerm(NegationTerm(eq), a))
+        push!(defs, isempty(fv) ? newFormula : AQuantifierTerm(fv, newFormula))
+      else
+        newArgs[i] = a
+      end
+    end
+    rootType(fp)(fp.name, newArgs)
+  end
+  f2f!(n::NegationTerm, defs, e::Env) = NegationTerm(f2f!(n.scope, defs, e))
+  function f2f!(j::JunctionTerm, defs, e::Env)
+    newJuncts = map(x -> isa(x, Variable) ? equalTerm(x, True) : x, f2f!.(j.juncts, Ref(defs), Ref(e)))
+    rootType(j)(convert(Vector{typejoin(typeof.(newJuncts)...)}, newJuncts))
+  end
+  f2f!(q::QuantifierTerm, defs, e::Env) = rootType(q)(q.variables, f2f!(q.scope, defs, e))
+  f2f!(v::Variable, defs, e::Env) = v
+
+  defs = Vector{SententialTerm}(undef, 0)
+  ret = f2f!(a, defs, e)
   newRet = isempty(defs) ? ret : push!(defs, ret)
   AndTerm(convert(Vector{typejoin(typeof.(newRet)...)}, newRet))
 end
-# replace formula in arguments of fp
-function f2f!(fp::Union{FunctionTerm,PredicateTerm}, defs)
-  newArgs = similar(fp.args)
-  for (i,a) in enumerate(fp.args)
-    if isa(a, SententialTerm)
-      fv, F = freeVar(a), FunctionTerm(newFunc(), fv)
-      newArgs[i] = F
-      eq = equalTerm(F,True)
-      newFormula = AndTerm(OrTerm(Negation(a), eq), OrTerm(Negation(eq), a))
-      push!(defs, isempty(fv) ? newFormula : AQuantifier(fv, newFormula))
-    else
-      newArgs[i] = a
-    end
-  end
-  rootType(fp)(fp.name, newArgs)
-end
-f2f!(n::NegationTerm, defs) = NegationTerm(f2f!(n.scope, defs))
-function f2f!(j::JunctionTerm, defs)
-  newJuncts = map(x -> isa(x, Variable) ? equalTerm(x, True) : x, f2f!.(j.juncts, defs))
-  rootType(j)(convert(Vector{typejoin(typeof.(newJuncts)...)}, newJuncts))
-end
-f2f!(q::QuantifierTerm, defs) = rootType(q)(q.variables, f2f!(q.scope, defs))
 
 
 """

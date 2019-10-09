@@ -98,12 +98,21 @@ spc = Drop(Star(Space()))
   tffAtomicType = typeConstant | definedType
   tffTypedVariable = variable + P"\s*:" + tffAtomicType |>
     x -> (e[x[1].name] = x[2]; x[1])
-  tffVariable = tffTypedVariable | variable
+  tffVariable = tffTypedVariable | (variable > x -> (e[x.name] = Environment.InputType(); x))
   tffVariableList = PlusList(tffVariable, E",") |> x -> convert(Vector{Variable}, x)
   tffTerm = Delayed()
   tffArguments = PlusList(tffTerm, P"\s*,") |>
     x -> convert(Vector{typejoin(typeof.(x)...)}, x)
-  tffPlainAtomic = (functor + P"\s*\(" + tffArguments + P"\s*\)\s*" |> x -> PredicateTerm(x[1], x[2])) |
+  tffPlainAtomic = (functor + P"\s*\(" + tffArguments + P"\s*\)\s*" |>
+                    x -> begin
+                    fType = get(e, x[1], ())
+                    outputType = isempty(fType) ? Environment.BoolType() : fType[end]
+                    if isempty(fType)
+                    numArgs = length(x[2])
+                    e[x[1].name] = ntuple(i -> i>numArgs ? Environment.BoolType() : outputType, numArgs+1)
+                    end
+                    (outputType != Environment.BoolType() ? FunctionTerm : PredicateTerm)(x[1], x[2])
+                    end) |
       (constant > ConstantTerm)
   tffAtomicFormula = tffPlainAtomic
   tfxUnitaryFormula  = variable
@@ -155,7 +164,8 @@ spc = Drop(Star(Space()))
     tffAtomicType
 
   tffAtomTyping = Delayed()
-  tffAtomTyping.matcher = (untypedAtom + P"\s*:" + tffTopLevelType |> x -> e[x[1].name] = x[2]) |
+  tffAtomTyping.matcher = (untypedAtom + P"\s*:" + tffTopLevelType |>
+                           x -> e[x[1].name] = Environment.PrimitiveType.(x[2]))|
                            (P"\s*\(" + tffAtomTyping + P"\s*\)")
 
   tffBinaryFormula = tffBinaryNonassoc | tffBinaryAssoc
@@ -190,13 +200,42 @@ end
 
 
 """
+    makeFOL!(s, e::Env)
+
+After parsing an untyped tff input we convert it to standard first order format and modify
+the environment accordingly.
+"""
+makeFOL!(v::Variable, e::Env, outputIsBool=true) = (e[v.name] = (Environment.InputType(),); v)
+function makeFOL!(f::FunctionTerm, e::Env, outputIsBool=false)
+  e[f.name.name] = ntuple(_ -> Environment.InputType(), length(f.args)+1)
+  FunctionTerm(f.name, makeFOL!.(f.args, Ref(e), false))
+end
+function makeFOL!(p::PredicateTerm, e::Env, outputIsBool=true)
+  numArgs = length(p.args)
+  if outputIsBool
+    e[p.name.name] = ntuple(i -> i>numArgs ? Environment.BoolType() : Environment.InputType(), numArgs+1)
+    PredicateTerm(p.name, makeFOL!.(p.args, Ref(e), false))
+  else
+    e[p.name.name] = ntuple(_ -> Environment.InputType(), numArgs+1)
+    FunctionTerm(p.name, makeFOL!.(p.args, Ref(e), false))
+  end
+end
+makeFOL!(n::NegationTerm, e::Env, outputIsBool=true) =
+  NegationTerm(makeFOL!(n.scope, e, true))
+makeFOL!(j::JunctionTerm, e::Env, outputIsBool=true) =
+  rootType(j)(makeFOL!.(j.juncts, Ref(e), true))
+makeFOL!(q::QuantifierTerm, e::Env, outputIsBool=true) =
+  rootType(q)(q.variables, makeFOL!(q.scope, e, true))
+
+
+
+"""
     parseTPTP(io::IO), parseTPTP(fileName::AbstractString)
 
 Read in the TPTP description at the given IO stream
 """
 function parseTPTP(io::IO)
-  global e
-  resetEnv!(e)  # create a fresh environment
+  resetEnv!(FirstOrderLogic.e)  # create a fresh environment
   ret = parse_one(read(io, String), tptpFile + Eos())
   close(io)
   ret
@@ -212,7 +251,8 @@ format in the string s. Note that \$ should not be escaped inside the fol_str
 macro.
 """
 macro fol_str(s)
-  simplify(parse_one(s, tffFormula+Eos())[1])
+  resetEnv!(FirstOrderLogic.e)  # create a fresh environment
+  makeFOL!(simplify(parse_one(s, tffFormula+Eos())[1]), FirstOrderLogic.e)
 end
 
 

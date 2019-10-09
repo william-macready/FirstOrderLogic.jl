@@ -6,7 +6,7 @@ containing the type information. If `s` is not properly typed return nothing.
 """
 outputType(s::Variable, e::Env) = get(e.userTypes, s.name, nothing)[1]
 function outputType(s::Union{FunctionTerm,PredicateTerm}, e::Env)
-  if isa(s, PredicateTerm) &&s.name.name == "=" # treat equality PredicateTerm
+  if isa(s, PredicateTerm) && s.name.name == "=" # treat equality PredicateTerm
     oTypes = outputType.(s.args, Ref(e))
     all(oTypes .== Ref(oTypes[1])) ? BoolType() : nothing
   else

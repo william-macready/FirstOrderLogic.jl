@@ -9,7 +9,7 @@ module Environment
 export BoolType, IntType, RationalType, RealType, Env, resetEnv!, userTypes,
   newVariable, newFunctor
 
-import Base: length, show, haskey, setindex!, getindex
+import Base: length, show, haskey, setindex!, getindex, get
 import FirstOrderLogic: Variable, Functor, FunctionTerm, PredicateTerm
 
 
@@ -92,13 +92,14 @@ Reset the state and types in an environment `e`.
 """
 function resetEnv!(e::Env)
   e.varCount = e.funcCount = 0
-  e.userTypes = Dict{String,CompositeType}()
-  e
+  for k in keys(e.userTypes)
+    delete!(e.userTypes, k)
+  end
 end
 
 
 """
-    setindex!(e::Env, v, k)
+    setindex!(e::Env, v, k::String)
 
 Record the user type identified by key `k` and type `v` in the environment
 `e`. `v` may be a `CompositeType`, a `String` or `Vector{String}` which are
@@ -107,21 +108,34 @@ converted to `CompositeType`.
 setindex!(e::Env, v::Union{PrimitiveType,String}, k) = setindex!(e.userTypes, (v,), k)
 setindex!(e::Env, v::CompositeType, k) = setindex!(e.userTypes, v, k)
 setindex!(e::Env, v::AbstractString, k) = setindex!(e.userTypes, (PrimitiveType(v),), k)
-function setindex!(e::Env, v::Vector{T}, k) where {T<:AbstractString}
-  setindex!(e.userTypes, tuple(PrimitiveType.(v)...), k)
-end
+setindex!(e::Env, v::Vector, k) = setindex!(e.userTypes, tuple(v...), k)
 
 
 """
-    getindex(e::Env, k)
+    getindex(e::Env, k::String)
 
 Get the type associated with key `k`.
 """
 getindex(e::Env, fv::Union{Functor,Variable}) = getindex(e.userTypes, fv.name)
 getindex(e::Env, fp::Union{FunctionTerm,PredicateTerm}) = getindex(e, fp.name)
-getindex(e::Env, s::AbstractString) = getindex(e.userTypes,s)
+getindex(e::Env, s::AbstractString) = getindex(e.userTypes, s)
 
 
+"""
+    get(e::Env, k::String, default)
+
+Get the type associated with key `k` and if not found return default.
+"""
+get(e::Env, fv::Union{Functor,Variable}, default) = get(e.userTypes, fv.name, default)
+get(e::Env, fp::Union{FunctionTerm,PredicateTerm}, default) = get(e, fp.name, default)
+get(e::Env, s::AbstractString, default) = get(e.userTypes, s, default)
+
+
+"""
+    haskey(e::Env, k)
+
+Check whether there is a type associated with key `k`.
+"""
 haskey(e::Env, fv::Union{Functor,Variable}) = haskey(e.userTypes, fv.name)
 haskey(e::Env, fp::Union{FunctionTerm,PredicateTerm}) = haskey(e, fp.name)
 haskey(e::Env, s::AbstractString) = haskey(e.userTypes, s)

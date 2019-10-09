@@ -25,12 +25,18 @@ using Test
   @test length(parseTPTP("tffTest.p")) == 4
 
   tmp = parseTPTP("tffTypeTest.p")
+  en = FirstOrderLogic.e
   # validate the environment created by tffTypeTest.p
-  @test length(FirstOrderLogic.e) == 16
+  @test haskey(en,"A") && haskey(en,"C") && haskey(en,"D") && haskey(en,"H") &&
+    haskey(en,"dog") && haskey(en,"cat") && haskey(en,"human") && haskey(en,"animal") &&
+    haskey(en,"garfield") && haskey(en,"odie") && haskey(en,"jon") &&
+    haskey(en,"chased") && haskey(en,"hates") && haskey(en,"owner_of") &&
+    haskey(en,"cat_to_animal") && haskey(en,"dog_to_animal")
+
   # test the ingested SententialTerms for their type
-  typed = Vector{Bool}(undef, 0)
+  wellTyped = Vector{Bool}(undef, 0)
   for s in filter(x->isa(x[2],FirstOrderLogic.SententialTerm), tmp)
-    push!(typed, isWellTyped(s[2],FirstOrderLogic.e))
+    push!(wellTyped, isWellTyped(s[2],FirstOrderLogic.e))
   end
-  @show typed
+  @test all(wellTyped)
 end # testset
