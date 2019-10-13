@@ -1,8 +1,8 @@
 using FirstOrderLogic
 using Test
 
-@testset "FirstOrderLogic.jl" begin
-  # test parser on first order formulae
+@testset "parser         tests" begin
+  # test parser on simple first order formulae
   @test isa(fol"f(R)", PredicateTerm)
   @test isa(fol"~f(R)", NegationTerm)
   @test isa(fol"a(X) & b(Y)", AndTerm)
@@ -10,23 +10,23 @@ using Test
   @test isa(fol"![X,Y] : a(f(X),Y)", AQuantifierTerm)
   @test isa(fol"?[X,Y,Z] : (a(f(X)) & b(c(Y,Z)))", EQuantifierTerm)
   @test isa(fol"d(Z) & (a(f(X)) & b(c(Y,Z)))", AndTerm)
+
   # test parser on annotated first order formulae
   @test isa(tptp"fof(union,axiom,
                  ! [X,A,B] :
                  ( member(X,union(A,B))
                  <=> ( member(X,A)
                  | member(X,B) ) ))."[2], AQuantifierTerm)
-
   @test length(parseTPTP("fofTest.p")) == 7
+
   # test parser on FOOL formula (with types and Boolean variables reifying formulas)
   @test isa(fol"! [A: animal] : ? [H: human] : H = owner_of(A) ", AQuantifierTerm)
   @test isa(fol" ! [X: $o]: (X | ~X)", AQuantifierTerm)
-
   @test length(parseTPTP("tffTest.p")) == 4
 
+  # validate the environment created by tffTypeTest.p
   tmp = parseTPTP("tffTypeTest.p")
   en = FirstOrderLogic.e
-  # validate the environment created by tffTypeTest.p
   @test haskey(en,"A") && haskey(en,"C") && haskey(en,"D") && haskey(en,"H") &&
     haskey(en,"dog") && haskey(en,"cat") && haskey(en,"human") && haskey(en,"animal") &&
     haskey(en,"garfield") && haskey(en,"odie") && haskey(en,"jon") &&
@@ -39,4 +39,13 @@ using Test
     push!(wellTyped, isWellTyped(s[2],FirstOrderLogic.e))
   end
   @test all(wellTyped)
-end # testset
+end # parser tests
+
+
+@testset "transformation tests" begin
+  # conversion of FOOL to FOL
+  f = parseTPTP("tffTest.p")[end][end]
+  fol = FOOL2FOL!(f, FirstOrderLogic.e)
+  @test isa(fol, AndTerm)
+
+end # transformation tests

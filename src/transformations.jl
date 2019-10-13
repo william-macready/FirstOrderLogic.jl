@@ -40,8 +40,12 @@ function FOOL2FOL!(a, e=Env())
 
   defs = Vector{SententialTerm}(undef, 0)
   ret = f2f!(a, defs, e)
-  newRet = isempty(defs) ? ret : push!(defs, ret)
-  AndTerm(convert(Vector{typejoin(typeof.(newRet)...)}, newRet))
+  if isempty(defs)
+    ret
+  else
+    push!(defs, ret)
+    AndTerm(convert(Vector{typejoin(typeof.(defs)...)}, defs))
+  end
 end
 
 
