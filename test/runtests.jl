@@ -1,7 +1,7 @@
 using FirstOrderLogic
 using Test
 
-@testset "parser         tests" begin
+@testset "parser & types " begin
   # test parser on simple first order formulae
   @test isa(fol"f(R)", PredicateTerm)
   @test isa(fol"~f(R)", NegationTerm)
@@ -41,11 +41,18 @@ using Test
   @test all(wellTyped)
 end # parser tests
 
-
-@testset "transformation tests" begin
+@testset "transformations" begin
   # conversion of FOOL to FOL
-  f = parseTPTP("tffTest.p")[end][end]
-  fol = FOOL2FOL!(f, FirstOrderLogic.e)
-  @test isa(fol, AndTerm)
+
+  fool = tptp"tff(imply_defn,axiom, ! [X: $o,Y: $o]: (imply(X,Y) <=> (~X | Y)) )."[end]
+  fol = simplify(FOOL2FOL!(fool, FirstOrderLogic.e))
+  @test isa(fol, AQuantifierTerm{AndTerm{OrTerm{SententialTerm}}})
+
+  fool = parseTPTP("tffTest.p")[end][end]
+  fol = simplify(FOOL2FOL!(fool[end][end], FirstOrderLogic.e))
+  @test isa(fol, AndTerm{AQuantifierTerm})
+
+  #skolemization
+  f = fol"?[Z]:(?[X]: q(X, Z) | ?[X]: p(X)) => ~(?[X] : p(X) & ![X] : ?[Z]: q(Z, X))"
 
 end # transformation tests

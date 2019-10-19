@@ -97,7 +97,7 @@ spc = Drop(Star(Space()))
   tfxUnitaryFormula = variable
   tffAtomicType = typeConstant | definedType
   tffTypedVariable = variable + P"\s*:" + tffAtomicType |>
-    x -> (e[x[1].name] = x[2]; x[1])
+    x -> (e[x[1].name] = Environment.PrimitiveType(x[2]); x[1])
   tffVariable = tffTypedVariable | (variable > x -> (e[x.name] = Environment.InputType(); x))
   tffVariableList = PlusList(tffVariable, E",") |> x -> convert(Vector{Variable}, x)
   tffTerm = Delayed()
@@ -203,20 +203,29 @@ end
     makeFOL!(s, e::Env)
 
 After parsing an untyped tff input we convert it to standard first order format and modify
-the environment accordingly.
+the environment accordingly. If `s` is already typed then do nothing.
 """
-makeFOL!(v::Variable, e::Env, outputIsBool=true) = (e[v.name] = (Environment.InputType(),); v)
+function makeFOL!(v::Variable, e::Env, outputIsBool=true)
+  haskey(e, v.name) || (e[v.name] = (Environment.InputType(),))
+  v
+end
 function makeFOL!(f::FunctionTerm, e::Env, outputIsBool=false)
-  e[f.name.name] = ntuple(_ -> Environment.InputType(), length(f.args)+1)
+  if !haskey(e,f.name.name)
+    e[f.name.name] = ntuple(_ -> Environment.InputType(), length(f.args)+1)
+  end
   FunctionTerm(f.name, makeFOL!.(f.args, Ref(e), false))
 end
 function makeFOL!(p::PredicateTerm, e::Env, outputIsBool=true)
   numArgs = length(p.args)
   if outputIsBool
-    e[p.name.name] = ntuple(i -> i>numArgs ? Environment.BoolType() : Environment.InputType(), numArgs+1)
+    if !haskey(e, p.name.name)
+      e[p.name.name] = ntuple(i -> i>numArgs ? Environment.BoolType() : Environment.InputType(), numArgs+1)
+    end
     PredicateTerm(p.name, makeFOL!.(p.args, Ref(e), false))
   else
-    e[p.name.name] = ntuple(_ -> Environment.InputType(), numArgs+1)
+    if !haskey(e, p.name.name)
+      e[p.name.name] = ntuple(_ -> Environment.InputType(), numArgs+1)
+    end
     FunctionTerm(p.name, makeFOL!.(p.args, Ref(e), false))
   end
 end
@@ -256,13 +265,6 @@ macro fol_str(s)
 end
 
 
-function tptpHelper(s)
-  global e
-  resetEnv!(e)  # create a fresh environment
-  parse_one(s, tptpFile+Eos())[1]
-end
-
-
 """
     @tptp_str(s)
 
@@ -270,5 +272,6 @@ Build the data structure representing the TPTP directive(s) in the string s.
 Note that \$ should not be escaped inside the fol_str macro
 """
 macro tptp_str(s)
-  tptpHelper(s)
+  resetEnv!(e)  # create a fresh environment
+  parse_one(s, tptpFile+Eos())[1]
 end

@@ -53,7 +53,7 @@ struct NegationTerm{T<:AbstractLogicTerm} <: SententialTerm{T}
 end
 string(n::NegationTerm) = "¬(" * string(n.scope) * ")"
 
-const LiteralTerm = Union{PredicateTerm,NegationTerm{PredicateTerm}}
+const LiteralTerm = Union{PredicateTerm{T}, NegationTerm{PredicateTerm{T}}} where {T<:Union{Variable,FunctionTerm}}
 
 Base.typejoin(::Type{PredicateTerm},::Type{NegationTerm{PredicateTerm}}) = LiteralTerm
 

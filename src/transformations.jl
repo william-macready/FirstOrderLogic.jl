@@ -12,14 +12,14 @@ for details.
 """
 function FOOL2FOL!(a, e=Env())
   # f2f! replaces all FOOL formula with FOL formula and adds new terms
-  function f2f!(fp::Union{FunctionTerm,PredicateTerm}, defs, e::Env)
+  function f2f!(fp::Union{FunctionTerm,PredicateTerm}, defs, e::Env, boolContext)
     newArgs = similar(fp.args, Union{Variable,FunctionTerm})
     for (i,a) in enumerate(fp.args)
-      a = f2f!(a, defs, e)  # recursively apply f2f!
+      a = f2f!(a, defs, e, false)  # recursively apply f2f!
       if typeof(a) <: Union{PredicateTerm,JunctionTerm,QuantifierTerm,NegationTerm}
         fv = freeVar(a)
         F = FunctionTerm(newFunctor(e), fv);  newArgs[i] = F
-        eq = equalTerm(F,True)
+        eq = equalTerm(F, True)
         ts = getindex.(Ref(e), getproperty.(fv, :name))  # get argument types
         e[F.name.name] = tuple(getindex.(ts,1)..., BoolType())
         newFormula = AndTerm(OrTerm(NegationTerm(a), eq), OrTerm(NegationTerm(eq), a))
@@ -30,20 +30,21 @@ function FOOL2FOL!(a, e=Env())
     end
     rootType(fp)(fp.name, newArgs)
   end
-  f2f!(n::NegationTerm, defs, e::Env) = NegationTerm(f2f!(n.scope, defs, e))
-  function f2f!(j::JunctionTerm, defs, e::Env)
-    newJuncts = map(x -> isa(x, Variable) ? equalTerm(x, True) : x, f2f!.(j.juncts, Ref(defs), Ref(e)))
+  f2f!(n::NegationTerm, defs, e::Env, boolContext) = NegationTerm(f2f!(n.scope, defs, e, true))
+  function f2f!(j::JunctionTerm, defs, e::Env, boolContext)
+    newJuncts = map(x -> isa(x, Variable) ? equalTerm(x, True) : x, f2f!.(j.juncts, Ref(defs), Ref(e), true))
     rootType(j)(convert(Vector{typejoin(typeof.(newJuncts)...)}, newJuncts))
   end
-  f2f!(q::QuantifierTerm, defs, e::Env) = rootType(q)(q.variables, f2f!(q.scope, defs, e))
-  f2f!(v::Variable, defs, e::Env) = v
+  f2f!(q::QuantifierTerm, defs, e::Env, boolContext) = rootType(q)(q.variables, f2f!(q.scope, defs, e, true))
+  f2f!(v::Variable, defs, e::Env, boolContext) = boolContext ? equalTerm(v, True) : v
 
   defs = Vector{SententialTerm}(undef, 0)
-  ret = f2f!(a, defs, e)
+  ret = f2f!(a, defs, e, true)
   if isempty(defs)
     ret
   else
     push!(defs, ret)
+    e[True.name.name] = BoolType();  e[False.name.name] = BoolType()
     AndTerm(convert(Vector{typejoin(typeof.(defs)...)}, defs))
   end
 end
@@ -78,6 +79,7 @@ function pullCommonQuantifiers(j::JunctionTerm)
 end
 pullCommonQuantifiers(q::QuantifierTerm) = rootType(q)(q.variables, pullCommonQuantifiers(q.scope))
 
+
 """
     simplify(s::SententialTerm)
 
@@ -101,7 +103,7 @@ function simplify(j::JunctionTerm)
 end
 function simplify(n::NegationTerm)
   ns = simplify(n.scope)
-  isa(ns, NegationTerm) ? n′.scope : NegationTerm(ns)
+  isa(ns, NegationTerm) ? ns.scope : NegationTerm(ns)
 end
 function simplify(q::QuantifierTerm)
   Q = rootType(q);  s = simplify(q.scope)
@@ -117,29 +119,35 @@ Obtain the negation normal form by pushing negations inward.
 negationNormalForm(p::PredicateTerm)= p
 negationNormalForm(a::JunctionTerm) = rootType(a)(negationNormalForm.(a.juncts))
 negationNormalForm(q::QuantifierTerm) = rootType(q)(q.variables, negationNormalForm(q.scope))
-negationNormalForm(n::NegationTerm) = nnf_(n.scope)
+function negationNormalForm(n::NegationTerm)
+  nnf(p::PredicateTerm) = NegationTerm(p)
+  nnf(n::NegationTerm) = negationNormalForm(n.scope)
+  nnf(a::OrTerm) = AndTerm(negationNormalForm.(NegationTerm.(a.juncts)))
+  nnf(a::AndTerm) = OrTerm(negationNormalForm.(NegationTerm.(a.juncts)))
+  nnf(q::EQuantifierTerm) = AQuantifierTerm(q.variables, negationNormalForm(NegationTerm(q.scope)))
+  nnf(q::AQuantifierTerm) = EQuantifierTerm(q.variables, negationNormalForm(NegationTerm(q.scope)))
 
-nnf_(p::PredicateTerm) = NegationTerm(p)
-nnf_(n::NegationTerm) = negationNormalForm(n.scope)
-nnf_(a::OrTerm) = AndTerm(negationNormalForm.(NegationTerm.(a.juncts)))
-nnf_(a::AndTerm) = OrTerm(negationNormalForm.(NegationTerm.(a.juncts)))
-nnf_(q::EQuantifierTerm) = AQuantifierTerm(q.variables, negationNormalForm(NegationTerm(q.scope)))
-nnf_(q::AQuantifierTerm) = EQuantifierTerm(q.variables, negationNormalForm(NegationTerm(q.scope)))
+  nnf(n.scope)
+end
 
 
 """
-    renameVars(s::SententialTerm)
+    renameVars(s::SententialTerm, e=Env())
 
-Standardize the names of all quantified variables so they are unique.
+Standardize the names of all quantified variables so they are unique. Use new variable names
+drawn from the environment `e`.
 """
-renameVars(s::SententialTerm) = rename_(s, Set{Variable}(), Dict{Variable,Variable}())
-rename_(p::PredicateTerm, seen, replacements) =
-  PredicateTerm(p.name, [isa(a,Variable) ? get(replacements, a, a) : a for a in p.args])
-rename_(n::NegationTerm, seen, replacements) = NegationTerm(rename_(n.scope, seen, replacements))
-rename_(j::JunctionTerm, seen, replacements) = rootType(j)(rename_.(j.juncts, Ref(seen), Ref(replacements)))
-function rename_(q::QuantifierTerm, seen, replacements)
-  newVars = [v ∈ seen ? replacements[v] = newVar(v) : v for v in q.variables]
-  rootType(q)(newVars, rename_(q.scope, union!(seen, Set(newVars)), replacements))
+function renameVars(s::SententialTerm, e=Env())
+  rename_(p::PredicateTerm, seen, replacements) =
+    PredicateTerm(p.name, [isa(a,Variable) ? get(replacements, a, a) : a for a in p.args])
+  rename_(n::NegationTerm, seen, replacements) = NegationTerm(rename_(n.scope, seen, replacements))
+  rename_(j::JunctionTerm, seen, replacements) = rootType(j)(rename_.(j.juncts, Ref(seen), Ref(replacements)))
+  function rename_(q::QuantifierTerm, seen, replacements)
+    newVars = [v ∈ seen ? replacements[v] = newVariable(v, e) : v for v in q.variables]
+    rootType(q)(newVars, rename_(q.scope, union!(seen, Set(newVars)), replacements))
+  end
+
+  rename_(s, Set{Variable}(), Dict{Variable,Variable}())
 end
 
 
@@ -165,59 +173,35 @@ function pullQuantifiers(j::JunctionTerm)
       J(js)
     end
   end
+
   pullThroughJunction(pullQuantifiers.(j.juncts), rootType(j))
 end
 pullQuantifiers(q::QuantifierTerm) = rootType(q)(q.variables, pullQuantifiers(q.scope))
 
 
 """
-    skolemize(s::SententialTerm)
+    skolemize(s::SententialTerm, e=Env())
 
-Remove all existential quantifiers from s (which is assumed to be in
-prenex normal form) by Skolemization
+Remove all existential quantifiers from `s` (which is assumed to be in prenex normal form)
+by Skolemization. We use the environment `e` to define new variables/functors.
 """
-skolemize(s::SententialTerm) = skolemize_(s, Dict{Variable,FunctionTerm}(), Variable[])
-skolemize_(v::Variable, replacements, _) = get(replacements, v, v)
-skolemize_(fp::Union{FunctionTerm,PredicateTerm}, replacements, previousAVars) =
-  rootType(fp)(fp.name, skolemize_.(fp.args, Ref(replacements), Ref(previousAVars)))
-skolemize_(n::NegationTerm, replacements, previousAVars) =
-  NegationTerm(skolemize_(n.scope, replacements, previousAVars))
-skolemize_(j::JunctionTerm, replacements, previousAVars) =
-  rootType(j)(skolemize_.(j.juncts, Ref(replacements), Ref(previousAVars)))
-skolemize_(a::AQuantifierTerm, replacements, previousAVars) =
-  AQuantifierTerm(a.variables, skolemize_(a.scope, replacements, append!(previousAVars, a.variables)))
-function skolemize_(e::EQuantifierTerm, replacements, previousAVars)
-  setindex!.(Ref(replacements), FunctionTerm.(newFunc.(e.variables), Ref(previousAVars)), e.variables)
-  skolemize_(e.scope, replacements, previousAVars)
+function skolemize(s::SententialTerm, e=Env())
+  skolemize_(v::Variable, replacements, _) = get(replacements, v, v)
+  skolemize_(fp::Union{FunctionTerm,PredicateTerm}, replacements, previousAVars) =
+    rootType(fp)(fp.name, skolemize_.(fp.args, Ref(replacements), Ref(previousAVars)))
+  skolemize_(n::NegationTerm, replacements, previousAVars) =
+    NegationTerm(skolemize_(n.scope, replacements, previousAVars))
+  skolemize_(j::JunctionTerm, replacements, previousAVars) =
+    rootType(j)(skolemize_.(j.juncts, Ref(replacements), Ref(previousAVars)))
+  skolemize_(a::AQuantifierTerm, replacements, previousAVars) =
+    AQuantifierTerm(a.variables, skolemize_(a.scope, replacements, append!(previousAVars, a.variables)))
+  function skolemize_(eq::EQuantifierTerm, replacements, previousAVars)
+    setindex!.(Ref(replacements), FunctionTerm.(newFunctor.(eq.variables, e), Ref(previousAVars)), eq.variables)
+    skolemize_(e.scope, replacements, previousAVars)
+  end
+
+  skolemize_(s, Dict{Variable,FunctionTerm}(), Variable[])
 end
-
-
-"""
-    prenexNormalForm(s::SententialTerm)
-
-Convert s to prenex normal form.
-"""
-prenexNormalForm(s) = s |> negationNormalForm |> pullCommonQuantifiers |> renameVars |> pullQuantifiers |> distributeOrOverAnd
-
-
-"""
-    skolemNormalForm(s::SententialTerm)
-
-Return Skolem normal form of s
-"""
-skolemNormalForm(s::SententialTerm) = s |> prenexNormalForm |> skolemize
-
-
-"""
-    stripQuantifiers(s::SententialTerm)
-
-Remove all quantifiers from sentence s. This is useful when constructing the
-universally quantified conjunction normal form.
-"""
-stripQuantifiers(p::PredicateTerm) = p
-stripQUantifiers(n::NegationTerm) = NegationTerm(stripQuantifiers(n.scope))
-stripQuantifiers(j::JunctionTerm) = rootType(j)(stripQuantifiers.(j.juncts))
-stripQuantifiers(q::QuantifierTerm) = stripQuantifiers.(q.scope)
 
 
 """
@@ -227,13 +211,15 @@ Utility to flatten a list of lists into a list.
 """
 flatList(ls) = collect(Iterators.flatten(ls))
 
+
 using IterTools
+
 
 """
     distributeOrOverAnd(s::SententialTerm)
 
 Distribute ∨ over ∧ assuming we are in prenex normal form. This is used when
-converting a sentence to clausal form.
+converting a sentence `s` to clausal form.
 """
 distributeOrOverAnd(l::LiteralTerm) = AndTerm(OrTerm([l]))
 function distributeOrOverAnd(a::AndTerm)
@@ -249,3 +235,33 @@ function distributeOrOverAnd(o::OrTerm)
   AndTerm(clauses)
 end
 distributeOrOverAnd(q::QuantifierTerm) = rootType(q)(q.variables, distributeOrOverAnd(q.scope))
+
+
+"""
+    prenexNormalForm(s::SententialTerm, e=Env())
+
+Convert `s` to prenex normal form. Use the environment `e` to define new variables/functors.
+"""
+prenexNormalForm(s, e=Env()) = s |> negationNormalForm |> pullCommonQuantifiers |>
+  Base.Fix2(renameVars, e) |> pullQuantifiers |> distributeOrOverAnd |> simplify
+
+
+"""
+    skolemNormalForm(s::SententialTerm, e=Env())
+
+Return the Skolem normal form of `s` using the environment `e` to define new
+variables/functors. The result is in CNF form.
+"""
+skolemNormalForm(s::SententialTerm, e=Env()) = s |> Base.Fix2(prenexNormalForm, e) |> skolemize |> simplify
+
+
+"""
+    stripQuantifiers(s::SententialTerm)
+
+Remove all quantifiers from sentence s. This is useful when constructing the
+universally quantified conjunction normal form.
+"""
+stripQuantifiers(p::PredicateTerm) = p
+stripQUantifiers(n::NegationTerm) = NegationTerm(stripQuantifiers(n.scope))
+stripQuantifiers(j::JunctionTerm) = rootType(j)(stripQuantifiers.(j.juncts))
+stripQuantifiers(q::QuantifierTerm) = stripQuantifiers.(q.scope)
